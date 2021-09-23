@@ -4,22 +4,13 @@ SonarQube is an open-source tool that ensures continuous code quality and securi
 
 This tool provides a detailed report of bugs, code smells, vulnerabilities, code duplications, and it supports these languages by built-in rulesets and can also be extended with various plugins.
 
-## Install SonarQube with docker-compose 
+## Install SonarQube with docker-compose on an EC2 instance
 
-Take the following steps to install SonarQube with docker-compose:
-
-### Setting up Firewall rules
-
-- Open up port 9000 on your machine
+In setting up your EC2 instance, open up the following additional ports:
 
 ```bash
-sudo ufw allow 9000/tcp
-```
-
-- Verify the state of your firewall
-
-```bash
-sudo ufw status verbose
+port 8080/TCP
+port 9000/TCP
 ```
 
 ### Installing Docker and Docker-compose
@@ -27,18 +18,32 @@ sudo ufw status verbose
 - Install docker
 
 ```bash
-sudo apt-get install docker -y
+sudo yum update -y
+sudo yum install docker
+sudo service docker start
+sudo usermod -a -G docker ec2-user
 ```
+
+- Exit the container via the ```exit``` command and log back in, to enable the docker service run without the **sudo** command.
 
 - Install docker-compose
 
 ```bash
-sudo apt-get install docker-compose -y
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+docker-compose --version
 ```
 
 ### Creating a docker-compose file
 
-- We create a docker-compose.yml file to contain docker commands to install SonarQube and PostgreSQL.
+- Create a docker-compose.yml file to contain docker commands to install SonarQube and PostgreSQL.
+
+```bash
+nano docker-compose.yml
+```
+
+to contain:
 
 ```bash
 version: "3"
@@ -82,13 +87,15 @@ volumes:
   sonarqube_extensions:
 ```
 
+The command `Ctrl + X` and `Y`, closes the script.
+
 - Run the following command to start up your docker-compose file
 
 ```bash
-sudo docker-compose up -d 
+docker-compose up -d 
 ```
 
-**Caveat:** Peradventure you run into a *Could not connect to Docker-daemon* error, it implies you have to add *Docker group* to the current user by running the following command ```sudo usermod -aG docker $USER```
+![ter1](https://user-images.githubusercontent.com/49791498/134591430-b6ca93aa-5c66-404a-b31f-98445ce64e3c.png)
 
 - Ensure SonarQube is running by checking your logs
 
@@ -97,10 +104,12 @@ sudo docker-compose logs
 ```
 
 **Access SonarQube UI via:**  <http://your_SonarQube_publicdns_name:9000/>
+**Default login details are 'admin', 'admin' for both username and pasword.**
+**[Installing Docker](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/docker-basics.html), [and docker-compose](https://acloudxpert.com/how-to-install-docker-compose-on-amazon-linux-ami/)**
 
 ## Integrate a Jenkins pipeline to the build
 
-- Connect to your AWS EC2 instance, then run the following commands, to download and install Jenkins.
+- While SonarQube is running, then run the following commands in your VM to download and install Jenkins.
 
 ```bash
 sudo yum update –y
@@ -115,7 +124,7 @@ sudo systemctl status jenkins
 
 ### Configure Jenkins
 
-- To view Jenkins UI, type `http://<your_server_public_DNS>:8080` in your browser.
+- Open up Jenkins in your browser, by typing in: `http://<your_server_public_DNS>:8080` in the search bar.
 
 ![image](https://user-images.githubusercontent.com/49791498/133862137-b0c6f9c2-46ab-45dc-a7dd-eea8b158f465.png)
 
@@ -148,6 +157,4 @@ sudo cat /var/lib/jenkins/secrets/initialAdminPassword
 
 - Further configurations depending on the programming language of choice, can be found in [this article](https://docs.sonarqube.org/latest/analysis/scan/sonarscanner-for-jenkins/).
 
-
-## using a terraform script
-
+## Creating a Terraform script
