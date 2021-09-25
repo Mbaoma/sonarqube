@@ -11,7 +11,7 @@ In setting up your EC2 instance, the following are required:
 - An Ubuntu Instance
 ![ubuntu instance](https://user-images.githubusercontent.com/49791498/134748422-c044089e-6ac2-4314-a606-49d87a2dd699.png)
 
-- A t2 instance type
+- A t2 medium instance type
 ![instance type](https://user-images.githubusercontent.com/49791498/134748774-fbfda5b8-8e3b-4dcc-bddd-da3d8fe05522.png)
 
 - Open up required ports in your VM instance security group
@@ -52,7 +52,7 @@ docker-compose --version
 
 ### Install sonar
 
-Install the sonar service by running the following command:
+Install the sonar service by running the following commands:
 
 ```bash
 sudo sysctl -w vm.max_map_count=262144
@@ -60,14 +60,14 @@ sudo sysctl -w vm.max_map_count=262144
 
 ### Creating a docker-compose file
 
-- Create a docker-compose.yml file to contain docker commands to install SonarQube and PostgreSQL.
-
 - Create a new folder and switch to it.
 
 ```bash
 mkdir sonar
 cd sonar
 ```
+
+- Create a docker-compose.yml file to contain docker commands to install SonarQube and PostgreSQL.
 
 ```bash
 nano docker-compose.yml
@@ -86,8 +86,8 @@ services:
     networks:
       - sonarnet
     environment:
-      - sonar.jdbc.username=sonar
-      - sonar.jdbc.password=sonar
+      - sonar.jdbc.username=<unique-value>
+      - sonar.jdbc.password=<unique-value>
       - sonar.jdbc.url=jdbc:postgresql://db:5432/sonar
     volumes:
       - sonarqube_conf:/opt/sonarqube/conf
@@ -102,8 +102,8 @@ services:
     networks:
       - sonarnet
     environment:
-      - POSTGRES_USER=sonar
-      - POSTGRES_PASSWORD=sonar
+      - POSTGRES_USER=<unique-value>
+      - POSTGRES_PASSWORD=<unique-value>
     volumes:
       - postgresql:/var/lib/postgresql
       # This needs explicit mapping due to https://github.com/docker-library/postgres/blob/4e48e3228a30763913ece952c611e5e9b95c8759/Dockerfile.template#L52
@@ -138,12 +138,19 @@ sudo docker-compose logs
 ```
 
 **Access SonarQube UI via:**  <http://ec2-public-dns:9000/>
-**Default login details are 'admin', 'admin' for both username and pasword.**
+
 **[Reference](https://www.youtube.com/watch?v=-aDjIMwYy34&t=10s)**
 
 ![image](https://user-images.githubusercontent.com/49791498/134751748-a0fa2c61-aa4b-4e28-8799-c6fbef4428a4.png)
 
 ## Integrate a Jenkins pipeline to the build
+
+- Log into your SOnarQube account with the default values of 'admin', 'admin' for both username and pasword.
+![image](https://user-images.githubusercontent.com/49791498/134770038-27df4b3e-ac68-42b4-a349-a2eb5b7a4b02.png)
+
+- Generate tokens by clicking on 'Security' under 'My Account'.
+Then under 'Tokens', give it a name and click on 'Generate token'.
+![image](https://user-images.githubusercontent.com/49791498/134770067-2cfc1812-2f20-4228-b228-f1df54b36e57.png)
 
 - While SonarQube is running, then run the following commands in your VM to download and install Jenkins.
 
@@ -188,8 +195,53 @@ sudo cat /var/lib/jenkins/secrets/initialAdminPassword
 - On Jenkins, head to the **Manage Jenkins** page and click on **Configure System**.
 
 - Scroll down to the **SonarQube Scanner** section and fill the prompts as shown below, click **apply** and then **save**.
-<pictures>
+![image](https://user-images.githubusercontent.com/49791498/134771056-587ec28c-2b14-4b08-8fd8-fc6eb3bb3b6c.png)
+
+- Configure your job by clicking on 'Prepare Sonarqube scanner environment'
+![image](https://user-images.githubusercontent.com/49791498/134771109-bf599c67-08a7-4da6-a395-f6239276614f.png)
+
+- Your Jenkinsfile should contain this code
+
+```bash
+node {
+
+    def mvnHome = tool 'Maven3'
+    stage ("checkout")  {
+        //write pipeline code
+    }
+
+   stage ('build')  {
+    sh "${mvnHome}/bin/mvn clean install -f MyWebApp/pom.xml"
+    }
+
+     stage ('Code Quality scan')  {
+       withSonarQubeEnv('SonarQube') {
+       sh "${mvnHome}/bin/mvn -f MyWebApp/pom.xml sonar:sonar"
+        }
+   }
+}
+```
 
 - Further configurations depending on the programming language of choice, can be found in [this article](https://docs.sonarqube.org/latest/analysis/scan/sonarscanner-for-jenkins/).
 
+- For building a pipeline for Flask projects, read [this article](https://dev.to/mmphego/how-i-configured-sonarqube-for-python-code-analysis-with-jenkins-and-docker-28fm)
+
 ## Creating a Terraform script
+
+- We created the following Terraform scripts to act as place holders
+
+```bash
+main.tf
+variables.tf
+versions.tf
+output.tf
+database.tf
+```
+
+- Then run the following Terraform commands
+
+```bash
+terraform init
+terraform plan
+terraform apply
+```
