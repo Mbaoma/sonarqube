@@ -6,38 +6,68 @@ This tool provides a detailed report of bugs, code smells, vulnerabilities, code
 
 ## Install SonarQube with docker-compose on an EC2 instance
 
-In setting up your EC2 instance, open up the following additional ports:
+In setting up your EC2 instance, the following are required:
 
-```bash
-port 8080/TCP
-port 9000/TCP
-```
+- An Ubuntu Instance
+![ubuntu instance](https://user-images.githubusercontent.com/49791498/134748422-c044089e-6ac2-4314-a606-49d87a2dd699.png)
+
+- A t2 instance type
+![instance type](https://user-images.githubusercontent.com/49791498/134748774-fbfda5b8-8e3b-4dcc-bddd-da3d8fe05522.png)
+
+- Open up required ports in your VM instance security group
+![image](https://user-images.githubusercontent.com/49791498/134749294-23d1ffac-ed13-4773-929f-95e07876c99f.png)
+
+- Click ```Launch``` to spin up your instance.
+
+- SSH into your instance.
 
 ### Installing Docker and Docker-compose
 
-- Install docker
+- Install docker and create an ```ubuntu``` usergroup to which we add our ```docker``` user; to enable us run docker commands without the ```sudo``` command. Confirm its installation by checking docker's status.
 
 ```bash
-sudo yum update -y
-sudo yum install docker
-sudo service docker start
-sudo usermod -a -G docker ec2-user
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+sudo apt-get update
+apt-cache policy docker-ce
+sudo apt-get install -y docker-ce
+sudo usermod -aG docker ubuntu
+sudo systemctl status docker
 ```
+
+![docker status](https://user-images.githubusercontent.com/49791498/134751011-9513a161-b383-47e6-8d63-67e36b226abe.png)
 
 - Exit the container via the ```exit``` command and log back in, to enable the docker service run without the **sudo** command.
 
-- Install docker-compose
+- Install docker-compose, change the permissions and file location. Confirm its installation by checking the version
 
 ```bash
 sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod +x /usr/local/bin/docker-compose
-ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
 docker-compose --version
+```
+
+![docker-compose version](https://user-images.githubusercontent.com/49791498/134751045-af552135-5aca-406d-8b83-662cf88eb7ff.png)
+
+### Install sonar
+
+Install the sonar service by running the following command:
+
+```bash
+sudo sysctl -w vm.max_map_count=262144
 ```
 
 ### Creating a docker-compose file
 
 - Create a docker-compose.yml file to contain docker commands to install SonarQube and PostgreSQL.
+
+- Create a new folder and switch to it.
+
+```bash
+mkdir sonar
+cd sonar
+```
 
 ```bash
 nano docker-compose.yml
@@ -46,45 +76,49 @@ nano docker-compose.yml
 to contain:
 
 ```bash
-version: "3"
+version: '2'
 
 services:
   sonarqube:
-    image: sonarqube:6.7.1
-    container_name: sonarqube
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=<unique-user-name>
-      - POSTGRES_PASSWORD=<unique-password>
-      - SONARQUBE_JDBC_URL=jdbc:postgresql://db:5432/sonarqube
+    image: sonarqube
     ports:
-      - "9000:9000"
-      - "9092:9092"
+      - '9000:9000'
+    networks:
+      - sonarnet
+    environment:
+      - sonar.jdbc.username=sonar
+      - sonar.jdbc.password=sonar
+      - sonar.jdbc.url=jdbc:postgresql://db:5432/sonar
     volumes:
       - sonarqube_conf:/opt/sonarqube/conf
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_extensions:/opt/sonarqube/extensions
-      - sonarqube_bundled-plugins:/opt/sonarqube/lib/bundled-plugins
-
+    ulimits:
+      nofile:
+       soft: 65536
+       hard: 65536
   db:
-    image: postgres:10.1
-    container_name: db
-    restart: unless-stopped
+    image: postgres
+    networks:
+      - sonarnet
     environment:
-      - POSTGRES_USER=<unique-user-name>
-      - POSTGRES_PASSWORD=<unique-password>
-      - POSTGRES_DB=sonarqube
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=sonar
     volumes:
-      - sonarqube_db:/var/lib/postgresql10
-      - postgresql_data:/var/lib/postgresql10/data
+      - postgresql:/var/lib/postgresql
+      # This needs explicit mapping due to https://github.com/docker-library/postgres/blob/4e48e3228a30763913ece952c611e5e9b95c8759/Dockerfile.template#L52
+      - postgresql_data:/var/lib/postgresql/data
+
+networks:
+  sonarnet:
+    driver: bridge
 
 volumes:
-  postgresql_data:
-  sonarqube_bundled-plugins:
   sonarqube_conf:
   sonarqube_data:
-  sonarqube_db:
   sonarqube_extensions:
+  postgresql:
+  postgresql_data:
 ```
 
 The command `Ctrl + X` and `Y`, closes the script.
@@ -103,22 +137,23 @@ docker-compose up -d
 sudo docker-compose logs
 ```
 
-**Access SonarQube UI via:**  <http://your_SonarQube_publicdns_name:9000/>
+**Access SonarQube UI via:**  <http://ec2-public-dns:9000/>
 **Default login details are 'admin', 'admin' for both username and pasword.**
-**[Installing Docker](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/docker-basics.html), [and docker-compose](https://acloudxpert.com/how-to-install-docker-compose-on-amazon-linux-ami/)**
+**[Reference](https://www.youtube.com/watch?v=-aDjIMwYy34&t=10s)**
+
+![image](https://user-images.githubusercontent.com/49791498/134751748-a0fa2c61-aa4b-4e28-8799-c6fbef4428a4.png)
 
 ## Integrate a Jenkins pipeline to the build
 
 - While SonarQube is running, then run the following commands in your VM to download and install Jenkins.
 
 ```bash
-sudo yum update –y
-sudo wget -O /etc/yum.repos.d/jenkins.repo \
-    https://pkg.jenkins.io/redhat-stable/jenkins.repo
-sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
-sudo yum upgrade
-sudo yum install jenkins java-1.8.0-openjdk-devel -y
-sudo systemctl daemon-reload
+wget -q -O - https://pkg.jenkins.io/debian/jenkins-ci.org.key | sudo apt-key add -
+echo deb http://pkg.jenkins.io/debian-stable binary/ | sudo tee /etc/apt/sources.list.d/jenkins.list
+sudo apt-get update
+sudo apt install openjdk-8-jdk
+sudo apt-get install jenkins
+sudo systemctl start jenkins
 sudo systemctl status jenkins
 ```
 
